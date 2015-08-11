@@ -1,45 +1,114 @@
-#include <Arduino.h>
-/*--------------------*/ 
-/* Command Definition */ 
-/*--------------------*/ 
- 
-#define AT25_WREN_CMD           0x06        /* Set Write Enable Latch */ 
-#define AT25_WRDI_CMD           0x04        /* Reset Write Enable Latch */ 
-#define AT25_RDSR_CMD           0x05        /* Read Status Register */ 
-#define AT25_WRSR_CMD           0x01        /* Write Status Register */ 
-#define AT25_READ_CMD           0x03        /* Read Data from Memory Array */ 
-#define AT25_WRITE_CMD          0x02        /* Write Data to Memory Array */ 
- 
-#define AT25_STATUS             0x00        /* Status Register */ 
-#define AT25_STATUS_MASK_READY  0x01        /* Status Register ready/busy mask */ 
-#define AT25_BUSY               0x1         /* RDY bit of SR = 0x1 */ 
-#define AT25_READY              0x0         /* RDY bit of SR = 0x0 */ 
- 
-#define AT25_STATUS_MASK_WREN   0x02        /* Status Register WREN mask */ 
-#define AT25_WREN               0x2         /* WEN of SR = 0x1 */ 
- 
-#define SPICLOCK                13          //sck
-#define DATAIN                  12          //MISO
-#define DATAOUT                 11          //MOSI
-#define WRITEPROTECT            10
-#define SLAVESELECT              9          //ss
-#define HOLD                     8
+#include    "AT25256.h"
 
-#define PAGESIZE  64
-
-typedef uint8_t			u_char;		/**< 8-bit value */
-typedef uint16_t                u_short;
-
-class AT25256
+void AT25256::begin() 
 {
-  public:
-  static void begin();
-  void write_enable();
-  u_char read_status_register();
-  void write_status_register(u_char);
-  void write_byte(u_short address, u_char);
-  void write_page(u_short, u_char *);
-  u_char read_byte(u_short, u_char);
-  int read_page(u_short, u_char *);
-  u_char SPI_transmit(u_char);
-};
+//  byte clr;
+//  DDRB |= (1<<5) | (1<<3);
+  /*Enable SPI as master, and SCK f/16*/
+  SPCR = (1<<SPE) | (1<<MSTR);// | (1<<SPR0);
+//  clr = SPSR;
+//  clr = SPDR;
+  delay(10);
+}
+
+u_char AT25256::SPI_transmit( u_char data )
+{
+   SPDR = data;
+   
+   /*Wait for transmission to complete*/
+   while(!(SPSR & (1<<SPIF)));
+   
+   return SPDR;
+}
+
+void AT25256::write_enable()
+{
+  digitalWrite(SLAVESELECT,LOW);  //enableable device
+  SPI_transmit(AT25_WREN_CMD);    //write enable instruction
+  digitalWrite(SLAVESELECT,HIGH); //disable device
+  delay(10);
+}
+
+u_char AT25256::read_status_register()
+{
+  u_char data = 0;
+  digitalWrite(SLAVESELECT,LOW);  //enableable device
+  data = SPI_transmit(AT25_RDSR_CMD);    //read status registry
+  digitalWrite(SLAVESELECT,HIGH); //disable device
+  delay(10);
+  return data;
+}
+
+void AT25256::write_status_register(u_char data)
+{
+  digitalWrite(SLAVESELECT,LOW);  //enableable device
+  SPI_transmit(AT25_WRSR_CMD);    //write instruction
+  SPI_transmit(data);
+  digitalWrite(SLAVESELECT,HIGH); //disable device
+  delay(10);
+}
+
+
+void AT25256::write_byte( u_short address, u_char data )
+{
+
+  digitalWrite(SLAVESELECT,LOW);
+  SPI_transmit(AT25_WRITE_CMD); //write instruction
+
+  //Send next page of data
+  SPI_transmit((address & 0x0FF00) >> 8);   //send MSByte address first
+  SPI_transmit(address & 0x0FF);      //send LSByte address
+  SPI_transmit(data);
+  digitalWrite(SLAVESELECT,HIGH); //release chip
+  delay(10);
+}
+
+void AT25256::write_page( u_short address, u_char *data )
+{
+  int i;
+  u_char *ptr = data;
+  digitalWrite(SLAVESELECT,LOW);
+  SPI_transmit(AT25_WRITE_CMD); //write instruction
+
+  //Send next page of data
+  SPI_transmit((address & 0x0FF00) >> 8);   //send MSByte address first
+  SPI_transmit(address & 0x0FF);      //send LSByte address
+  
+  for (i=0;(*ptr != 0) && (i<PAGESIZE);i++)
+    SPI_transmit(*ptr++);
+
+  digitalWrite(SLAVESELECT,HIGH); //release chip
+  delay(10);
+}
+
+u_char AT25256::read_byte( u_short address, u_char data )
+{
+  digitalWrite(SLAVESELECT,LOW);
+  SPI_transmit(AT25_READ_CMD);
+  SPI_transmit((address & 0x0FF00) >> 8);  
+  SPI_transmit(address & 0x0FF);  
+  data = SPI_transmit(0xFF);  
+  digitalWrite(SLAVESELECT,HIGH);
+  
+  return data;
+}
+
+int AT25256::read_page( u_short address, u_char *data )
+{
+  int i;
+
+  digitalWrite(SLAVESELECT,LOW);
+  SPI_transmit(AT25_READ_CMD); //read instruction
+
+  //Send next page of data
+  SPI_transmit((address & 0x0FF00) >> 8);   //send MSByte address first
+  SPI_transmit(address & 0x0FF);      //send LSByte address
+  
+  for (i=0;(i<PAGESIZE);i++)
+    data[i] = SPI_transmit(0xFF);
+
+  digitalWrite(SLAVESELECT,HIGH); //release chip
+  delay(10);
+  
+  return i;
+}
