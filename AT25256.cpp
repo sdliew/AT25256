@@ -2,12 +2,10 @@
 
 void AT25256::begin() 
 {
-//  byte clr;
-//  DDRB |= (1<<5) | (1<<3);
-  /*Enable SPI as master, and SCK f/16*/
-  SPCR = (1<<SPE) | (1<<MSTR);// | (1<<SPR0);
-//  clr = SPSR;
-//  clr = SPDR;
+
+  /*Enable SPI as master, and SCK f/4*/
+  SPCR = (1<<SPE) | (1<<MSTR);
+
   delay(10);
 }
 
@@ -59,7 +57,7 @@ void AT25256::write_byte( u_short address, u_char data )
   SPI_transmit((address & 0x0FF00) >> 8);   //send MSByte address first
   SPI_transmit(address & 0x0FF);      //send LSByte address
   SPI_transmit(data);
-  digitalWrite(SLAVESELECT,HIGH); //release chip
+  digitalWrite(SLAVESELECT,HIGH); //disable device
   delay(10);
 }
 
@@ -77,7 +75,7 @@ void AT25256::write_page( u_short address, u_char *data )
   for (i=0;(*ptr != 0) && (i<PAGESIZE);i++)
     SPI_transmit(*ptr++);
 
-  digitalWrite(SLAVESELECT,HIGH); //release chip
+  digitalWrite(SLAVESELECT,HIGH); //disable device
   delay(10);
 }
 
@@ -107,7 +105,7 @@ int AT25256::read_page( u_short address, u_char *data )
   for (i=0;(i<PAGESIZE);i++)
     data[i] = SPI_transmit(0xFF);
 
-  digitalWrite(SLAVESELECT,HIGH); //release chip
+  digitalWrite(SLAVESELECT,HIGH); //disable device
   delay(10);
   
   return i;
